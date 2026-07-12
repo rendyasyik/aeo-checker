@@ -21,4 +21,4 @@ simple = { limit = 10, period = 60 }
 # Replace `id` after `wrangler kv namespace create COUNTERS` (see README).
 [[kv_namespaces]]
 binding = "COUNTERS"
-id = "PLACEHOLDER_REPLACE_WITH_KV_ID"
+id = "1c34652a9dac4eb0a814764783242677"
