@@ -30,6 +30,11 @@ export { detectBlock } from "./block-detect.js";
 export { parseRobots, isAllowed } from "./robots.js";
 export { extractSchema } from "./schema-extract.js";
 export { checkWellFormed } from "./llms-fetch.js";
+export { validateUrlForFetch, type SsrfCheck } from "./ssrf.js";
+
+// Site-scan mode (Fase 3, Step 1): discovery + section-aware sampling +
+// orchestrator. Site-level score aggregation is intentionally deferred.
+export * from "./site-scan/index.js";
 
 export interface AnalyzeOptions extends FetchOptions {
   /** Skip network fetches for robots.txt / llms.txt (for offline analysis). */
