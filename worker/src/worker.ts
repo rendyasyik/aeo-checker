@@ -274,10 +274,12 @@ export default {
  *          REFUSE with 503 "busy" rather than return a misleading partial —
  *          honesty over silently-trimmed results.
  *
- * SCOPE FENCE: site-level score aggregation is deferred (pending Alison). This
- * returns the RAW orchestrator output (perPage + discovery + sections +
- * droppedBySsrf + sectionsTruncated + siteScore: null) unchanged. No scoring
- * math is applied here.
+ * Fase 3, Step 3: the orchestrator now returns the aggregated, honest site
+ * score (30/70 split, mean + median + spread, coverage gap, hybrid per-page
+ * AI-access reporting, estimate label) alongside the raw per-page output. This
+ * handler passes that payload through unchanged — the gate/mitigation stack
+ * above is untouched. No scoring math is applied here; it lives in the shared
+ * core lib (src/site-scan/aggregate.ts).
  *
  * Response cache per origin is intentionally NOT implemented (kept as a TODO
  * below) to avoid weakening the weighted-breaker accounting; correctness of the
@@ -448,10 +450,11 @@ async function handleScanSite(
   }
   await bumpQuotasBy(env, ip, n);
 
-  // RAW orchestrator output, unchanged. siteScore stays null (aggregation
-  // deferred pending Alison). TODO(Fase 3): optional per-origin response cache
-  // (key = origin + ":site") — deliberately omitted to keep the weighted
-  // breaker accounting exact.
+  // Orchestrator output INCLUDING the aggregated site score (Fase 3, Step 3):
+  // siteScore + answerReadinessBeta + blockDistribution + coverageGap +
+  // worstPage + sampledPages, plus the raw per-page material. TODO(Fase 3):
+  // optional per-origin response cache (key = origin + ":site") — deliberately
+  // omitted to keep the weighted-breaker accounting exact.
   return json(scan, 200, cors);
 }
 

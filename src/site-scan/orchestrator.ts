@@ -1,15 +1,16 @@
 /**
- * Site-scan ORCHESTRATOR (Fase 3, Step 1).
+ * Site-scan ORCHESTRATOR (Fase 3, Steps 1 + 3).
  *
  * Wires discovery -> section-aware sampling -> per-page single-page scan
- * (reusing the Fase 1 engine `analyzeUrl`), and returns the RAW per-page
- * results plus discovery/sampling metadata.
+ * (reusing the Fase 1 engine `analyzeUrl`), then aggregates the per-page +
+ * site-level signals into one honest site score (Step 3).
  *
- * SCOPE FENCE (hard): this deliberately STOPS BEFORE site-level score
- * aggregation. The methodology for rolling per-page + site-level signals into a
- * single site grade (e.g. a 30/70 site-vs-page split, per-page averaging, and a
- * worst-page rollup) is still being validated by Alison and is NOT implemented
- * here. See `aggregateSiteScore` below — it is an intentional stub.
+ * The aggregation methodology is the FINAL one validated by Alison
+ * (fase-3-validasi-metodologi.md): a 30/70 site-vs-page split, per-page MEAN
+ * with median + spread, HARD_BLOCK pages excluded as a coverage gap, hybrid
+ * per-page AI-access reporting, and an estimate label. The math lives in
+ * `./aggregate.ts` so the Worker and the MCP server share it. See
+ * `aggregateSiteScore` below.
  */
 
 import { analyzeUrl, type AnalyzeOptions } from "../index.js";
@@ -17,6 +18,7 @@ import type { AeoReport } from "../types.js";
 import { validateUrlForFetch } from "../ssrf.js";
 import { discover, type DiscoveryResult } from "./discovery.js";
 import { sample, type SamplingResult, type SectionSample } from "./sampling.js";
+import { aggregate, type SiteScoreResult } from "./aggregate.js";
 
 /** One per-page scan result (or an honest error placeholder). */
 export interface PageScanResult {
@@ -48,11 +50,24 @@ export interface SiteScanResult {
   perPage: PageScanResult[];
   /** How many candidate/sample URLs were dropped by the SSRF guard. */
   droppedBySsrf: number;
+  /** The site homepage URL (root), used as the site-level signal source. */
+  homepage: string;
   /**
-   * Placeholder for the site-level aggregated score. Intentionally left null
-   * until Alison validates the aggregation methodology (see aggregateSiteScore).
+   * Aggregated, honest site-level score + spread + block distribution +
+   * coverage gap + estimate label (Fase 3, Step 3). Null only in the degenerate
+   * case where there were zero sampled pages to aggregate at all.
    */
-  siteScore: null;
+  siteScore: SiteScoreResult["siteScore"] | null;
+  /** Answer-readiness beta aggregated separately (mean across counted pages). */
+  answerReadinessBeta: SiteScoreResult["answerReadinessBeta"] | null;
+  /** Correction 1/2: honest per-URL distribution of what blocked what. */
+  blockDistribution: SiteScoreResult["blockDistribution"] | null;
+  /** Correction 2: pages an AI crawler could not access at all. */
+  coverageGap: SiteScoreResult["coverageGap"] | null;
+  /** Worst counted page (diagnostic only, no score weight). */
+  worstPage: SiteScoreResult["worstPage"];
+  /** Every sampled page with its section + score + block (correction 4). */
+  sampledPages: SiteScoreResult["sampledPages"];
 }
 
 const DEFAULT_CONCURRENCY = 4;
@@ -125,6 +140,11 @@ export async function siteScan(
     },
   );
 
+  // 5. Aggregate per-page + site-level signals into one honest site score
+  //    (Fase 3, Step 3). Shared math lives in ./aggregate.ts.
+  const agg =
+    perPage.length > 0 ? aggregate(perPage, sampling.homepage) : null;
+
   return {
     origin: discovery.origin,
     discovery,
@@ -132,30 +152,28 @@ export async function siteScan(
     sectionsTruncated: sampling.truncatedSections,
     perPage,
     droppedBySsrf: discovery.droppedBySsrf + droppedAtSample,
-    siteScore: null,
+    homepage: sampling.homepage,
+    siteScore: agg?.siteScore ?? null,
+    answerReadinessBeta: agg?.answerReadinessBeta ?? null,
+    blockDistribution: agg?.blockDistribution ?? null,
+    coverageGap: agg?.coverageGap ?? null,
+    worstPage: agg?.worstPage ?? null,
+    sampledPages: agg?.sampledPages ?? [],
   };
 }
 
 /**
- * Site-level score aggregation.
+ * Site-level score aggregation (Fase 3, Step 3 — FINAL, validated by Alison).
  *
- * TODO(Fase 3, pending Alison validation): site-level vs page-level split +
- * aggregation. The approved-but-unvalidated design is a 30/70 split (site-level
- * signals 30 + averaged page-level 70) combined with a worst-page rollup. That
- * methodology is NOT implemented yet. For now this returns the raw material
- * only ({ perPage, sections, discovery }) with NO computed site score.
+ * Pure roll-up over an already-completed `SiteScanResult`: 30/70 site-vs-page
+ * split, page-level MEAN + median + spread, HARD_BLOCK pages excluded as a
+ * coverage gap (not scored 0), hybrid per-page AI-access reporting, and an
+ * estimate label. Delegates to the shared `aggregate` in ./aggregate.ts so the
+ * result is identical whether called here or precomputed inside `siteScan`.
+ *
+ * Returns the full aggregation payload. When there are zero sampled pages this
+ * still returns a well-formed (empty-coverage) payload.
  */
-export function aggregateSiteScore(scan: SiteScanResult): {
-  perPage: PageScanResult[];
-  sections: SectionSample[];
-  discovery: DiscoveryResult;
-} {
-  // TODO(Fase 3, pending Alison validation): implement the site-level vs
-  // page-level split + aggregation (30/70 + worst-page). Do NOT add scoring
-  // math here until the methodology is validated.
-  return {
-    perPage: scan.perPage,
-    sections: scan.sections,
-    discovery: scan.discovery,
-  };
+export function aggregateSiteScore(scan: SiteScanResult): SiteScoreResult {
+  return aggregate(scan.perPage, scan.homepage);
 }
