@@ -1,0 +1,12 @@
+# Example Media
+
+> Practical guides on answer engine optimization and technical SEO.
+
+## Guides
+
+- [AEO Guide](https://example.com/aeo-guide): The complete guide to answer engine optimization.
+- [Schema Guide](https://example.com/schema): How to implement schema.org.
+
+## About
+
+- [About](https://example.com/about): Who we are.
