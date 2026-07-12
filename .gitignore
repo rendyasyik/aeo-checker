@@ -15,6 +15,12 @@ npm-debug.log*
 !.env.example
 *.pem
 *.key
+.dev.vars
+.dev.vars.*
+
+# Wrangler / Cloudflare
+.wrangler/
+worker/.wrangler/
 
 # Editor / OS
 .DS_Store
