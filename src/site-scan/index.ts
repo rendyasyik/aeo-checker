@@ -1,8 +1,9 @@
 /**
- * Site-scan mode (Fase 3, Step 1) — public surface.
+ * Site-scan mode (Fase 3, Steps 1 + 3) — public surface.
  *
- * discovery -> section-aware sampling -> per-page Fase 1 scan. Aggregation of a
- * single site-level score is intentionally deferred (see orchestrator stub).
+ * discovery -> section-aware sampling -> per-page Fase 1 scan -> honest
+ * site-level aggregation (30/70 split, mean + spread, coverage gap, hybrid
+ * AI-access reporting, estimate label). See ./aggregate.ts for the shared math.
  */
 
 export {
@@ -30,3 +31,16 @@ export {
   type SiteScanOptions,
   type PageScanResult,
 } from "./orchestrator.js";
+
+export {
+  aggregate,
+  type SiteScoreResult,
+  type SiteScore,
+  type SiteLevelScore,
+  type PageLevelScore,
+  type AnswerReadinessBetaAggregate,
+  type BlockDistribution,
+  type CoverageGap,
+  type WorstPage,
+  type SampledPage,
+} from "./aggregate.js";

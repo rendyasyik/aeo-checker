@@ -238,7 +238,7 @@ describe("sampling: MAX_TOTAL_PAGES cost fence + section prioritization", () => 
   });
 });
 
-describe("orchestrator: discovery -> sampling -> per-page scan, no aggregation", () => {
+describe("orchestrator: discovery -> sampling -> per-page scan -> aggregation", () => {
   const html = `<!doctype html><html><head><title>T</title></head>
     <body><main><h1>Hello</h1><p>Some readable content for the engine.</p></main></body></html>`;
   const fetchImpl = mockFetch({
@@ -252,7 +252,7 @@ describe("orchestrator: discovery -> sampling -> per-page scan, no aggregation",
     "https://example.com/blog/beta": { body: html },
   });
 
-  it("returns raw per-page results + metadata and NO site score", async () => {
+  it("returns raw per-page results + a populated site score", async () => {
     const scan = await siteScan(ORIGIN, { fetchImpl });
     expect(scan.origin).toBe(ORIGIN);
     expect(scan.discovery.source).toBe("sitemap");
@@ -266,19 +266,29 @@ describe("orchestrator: discovery -> sampling -> per-page scan, no aggregation",
       expect(p.result).not.toBeNull();
       expect(typeof p.result?.total).toBe("number");
     }
-    // SCOPE FENCE: no site-level aggregated score is computed.
-    expect(scan.siteScore).toBeNull();
+    // Step 3: a site score is now computed (no longer null).
+    expect(scan.siteScore).not.toBeNull();
+    expect(scan.siteScore?.isEstimate).toBe(true);
+    expect(typeof scan.siteScore?.total).toBe("number");
+    expect(scan.siteScore?.siteLevel.max).toBe(30);
+    expect(scan.siteScore?.pageLevel.maxPossible).toBe(70);
+    // All three OK pages count toward the mean; nothing hard-blocked.
+    expect(scan.siteScore?.pageLevel.countedPages).toBe(3);
+    expect(scan.siteScore?.pageLevel.excludedHardBlock).toBe(0);
+    expect(scan.coverageGap?.inaccessible).toBe(0);
+    expect(scan.sampledPages.length).toBe(3);
+    expect(scan.answerReadinessBeta?.mean).not.toBeNull();
   });
 
-  it("aggregateSiteScore stub returns raw material only (no rollup)", async () => {
+  it("aggregateSiteScore returns the full honest roll-up", async () => {
     const scan = await siteScan(ORIGIN, { fetchImpl });
     const agg = aggregateSiteScore(scan);
-    expect(agg).toHaveProperty("perPage");
-    expect(agg).toHaveProperty("sections");
-    expect(agg).toHaveProperty("discovery");
-    // No computed site total / grade keys leak from the stub.
-    expect(agg).not.toHaveProperty("total");
-    expect(agg).not.toHaveProperty("grade");
-    expect(agg).not.toHaveProperty("siteScore");
+    expect(agg).toHaveProperty("siteScore");
+    expect(agg).toHaveProperty("blockDistribution");
+    expect(agg).toHaveProperty("coverageGap");
+    expect(agg).toHaveProperty("sampledPages");
+    expect(agg.siteScore.isEstimate).toBe(true);
+    // Site-level portion is the homepage's robots+llms, judged once.
+    expect(agg.siteScore.siteLevel.source).toBe("https://example.com/");
   });
 });

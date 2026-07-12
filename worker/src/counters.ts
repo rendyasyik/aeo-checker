@@ -104,3 +104,95 @@ export async function checkAndBumpQuotas(
     globalCount: globalCount + 1,
   };
 }
+
+// ---------------------------------------------------------------------------
+// WEIGHTED (site-scan) circuit breaker.
+//
+// A single /scan-site request costs N single-page scans (discovery + sampling
+// picks N URLs, capped at MAX_TOTAL_PAGES). To keep the SAME daily caps honest,
+// a site-scan must consume N units of the per-IP + global budget, not 1.
+//
+// Because N is only known AFTER discovery+sampling, the flow is two-phase:
+//   1. peekQuotas()  — read-only pre-check BEFORE running any fetch. If the
+//      breaker is already tripped (global or per-IP at/over cap) we refuse with
+//      503/429 without spending a single subrequest.
+//   2. bumpQuotasBy(n) — after discovery+sampling has determined N, atomically
+//      (best-effort, same KV last-write-wins caveat as above) add N units. The
+//      caller must FIRST verify the remaining budget can absorb N via
+//      canAbsorb(); if not, it refuses honestly (503 "busy") rather than
+//      silently trimming the sample into a misleading partial result.
+//
+// The same KV free-tier caveat applies: no atomic increment, so weighted counts
+// are approximate. Weighting N (vs 1) makes the breaker trip EARLIER for heavy
+// site-scans, which is the safe direction to be wrong in.
+// ---------------------------------------------------------------------------
+
+export interface QuotaSnapshot {
+  ipCount: number;
+  globalCount: number;
+}
+
+/** Read both counters without incrementing (pre-flight for weighted scans). */
+export async function peekQuotas(
+  env: CounterEnv,
+  ip: string,
+): Promise<QuotaSnapshot> {
+  const day = utcDay();
+  const [ipCount, globalCount] = await Promise.all([
+    readCount(env.COUNTERS, `ip:${ip}:${day}`),
+    readCount(env.COUNTERS, `global:${day}`),
+  ]);
+  return { ipCount, globalCount };
+}
+
+/**
+ * Given a snapshot and a weight N, decide whether a site-scan may proceed.
+ * A scan is refused if EITHER counter is already at/over its cap, OR if adding N
+ * units would push it over. We refuse (do not trim) so the result is never a
+ * silently-shrunk, misleading partial scan.
+ */
+export function canAbsorb(
+  snap: QuotaSnapshot,
+  n: number,
+): { allowed: boolean; blockedBy: "global" | "ip_daily" | null } {
+  if (snap.globalCount + n > GLOBAL_DAILY_CAP) {
+    return { allowed: false, blockedBy: "global" };
+  }
+  if (snap.ipCount + n > PER_IP_DAILY_CAP) {
+    return { allowed: false, blockedBy: "ip_daily" };
+  }
+  return { allowed: true, blockedBy: null };
+}
+
+/**
+ * Add N units to both the per-IP and global daily counters (best-effort,
+ * last-write-wins). Re-reads current values first so the weighted bump is based
+ * on the freshest count available (still subject to the KV eventual-consistency
+ * caveat documented above). Call only after canAbsorb() returned allowed.
+ */
+export async function bumpQuotasBy(
+  env: CounterEnv,
+  ip: string,
+  n: number,
+): Promise<QuotaSnapshot> {
+  const day = utcDay();
+  const ipKey = `ip:${ip}:${day}`;
+  const globalKey = `global:${day}`;
+
+  const [ipCount, globalCount] = await Promise.all([
+    readCount(env.COUNTERS, ipKey),
+    readCount(env.COUNTERS, globalKey),
+  ]);
+
+  const nextIp = ipCount + n;
+  const nextGlobal = globalCount + n;
+
+  await Promise.all([
+    env.COUNTERS.put(ipKey, String(nextIp), { expirationTtl: DAY_TTL_SECONDS }),
+    env.COUNTERS.put(globalKey, String(nextGlobal), {
+      expirationTtl: DAY_TTL_SECONDS,
+    }),
+  ]);
+
+  return { ipCount: nextIp, globalCount: nextGlobal };
+}

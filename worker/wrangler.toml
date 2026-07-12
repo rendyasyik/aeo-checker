@@ -10,12 +10,21 @@ compatibility_flags = ["nodejs_compat"]
 [vars]
 ALLOWED_ORIGINS = ""
 
-# --- Layer 3: native per-IP per-minute rate limit (10 req / 60s) ---
+# --- Layer 3: native per-IP per-minute rate limit for /scan (10 req / 60s) ---
 # period must be 10 or 60; 60 gives a per-minute window.
 [[ratelimits]]
 name = "RATE_LIMITER"
 namespace_id = "1001"
 simple = { limit = 10, period = 60 }
+
+# --- Layer 3 (site-scan): STRICTER per-IP per-minute limit for /scan-site.
+# A site-scan is far heavier (N pages per request), so its per-minute limit is
+# much tighter (2 req / 60s) and uses a SEPARATE namespace so it never collides
+# with the /scan limiter above. Tune `limit` here.
+[[ratelimits]]
+name = "SITE_RATE_LIMITER"
+namespace_id = "1002"
+simple = { limit = 2, period = 60 }
 
 # --- Layers 4 & 7: daily per-IP quota + global circuit breaker (KV) ---
 # Replace `id` after `wrangler kv namespace create COUNTERS` (see README).
