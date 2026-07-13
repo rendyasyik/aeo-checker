@@ -3,6 +3,14 @@ main = "src/worker.ts"
 compatibility_date = "2025-01-01"
 compatibility_flags = ["nodejs_compat"]
 
+# --- Custom domain: serve the Worker at https://api.rendyandriyanto.com ---
+# custom_domain = true makes Cloudflare manage the DNS record + edge cert for
+# this hostname and bind it to this Worker, so future deploys keep the domain.
+# Endpoints (/scan, /scan-site) are unchanged; the apex/www CORS guard applies.
+[[routes]]
+pattern = "api.rendyandriyanto.com"
+custom_domain = true
+
 # Non-secret vars. Production default CORS is the rendyandriyanto.com apex + www
 # (hardcoded in src/cors.ts). ALLOWED_ORIGINS adds extra origins for preview/dev
 # only — leave EMPTY in production. TURNSTILE_SECRET is a Worker secret, NOT set
