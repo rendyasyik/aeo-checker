@@ -20,7 +20,14 @@ import { scoreLlmsTxt } from "./dimensions/llms-txt.js";
 import { scoreAnswerReadiness } from "./answer-readiness.js";
 import { buildFixes, computeTotal, gradeForTotal } from "./scoring.js";
 import type { AnalysisContext, LlmsTxtResult } from "./context.js";
-import type { AeoReport, DimensionId, DimensionResult } from "./types.js";
+import type {
+  AeoReport,
+  AnswerStructure,
+  DimensionId,
+  DimensionResult,
+  ExtractedContent,
+} from "./types.js";
+import { MAX_EXTRACTED_CONTENT_CHARS } from "./types.js";
 
 export * from "./types.js";
 export type { AnalysisContext, LlmsTxtResult } from "./context.js";
@@ -39,13 +46,65 @@ export * from "./site-scan/index.js";
 export interface AnalyzeOptions extends FetchOptions {
   /** Skip network fetches for robots.txt / llms.txt (for offline analysis). */
   skipAuxiliaryFetches?: boolean;
+  /**
+   * When true, attach `extractedContent` (readable text an AI crawler sees +
+   * deterministic structural answer signals) to the report. Default false so
+   * the web tool / Worker contract and payload size are unchanged. Intended for
+   * the MCP server, where the host LLM judges answer-ability.
+   */
+  includeExtractedContent?: boolean;
+}
+
+/**
+ * Build the MCP substrate object by SURFACING already-computed values: the
+ * parser's readable text (same extraction the Content Extractability dimension
+ * scores) and the answer-readiness (beta) structural signals. Nothing is
+ * recomputed or re-derived with different logic, and no quality judgement is
+ * made here. Deterministic.
+ */
+function buildExtractedContent(
+  ctx: AnalysisContext,
+  answerSignals: Record<string, unknown>,
+): ExtractedContent {
+  const blocked = ctx.block.status !== "OK";
+  const full = ctx.parsed.visibleText;
+  const originalLength = full.length;
+  const truncated = originalLength > MAX_EXTRACTED_CONTENT_CHARS;
+  const mainText = truncated
+    ? full.slice(0, MAX_EXTRACTED_CONTENT_CHARS)
+    : full;
+
+  const num = (v: unknown): number => (typeof v === "number" ? v : 0);
+  const bool = (v: unknown): boolean => v === true;
+
+  const answerStructure: AnswerStructure = {
+    faqSchema: bool(answerSignals.faqSchema),
+    faqBlock: bool(answerSignals.faqBlock),
+    questionHeadingCount: num(answerSignals.questionHeadingCount),
+    answerParagraphCount: num(answerSignals.answerParagraphs),
+    tldr: bool(answerSignals.tldr),
+    orderedListCount: num(answerSignals.orderedListCount),
+    howToSchema: bool(answerSignals.howToSchema),
+  };
+
+  return {
+    mainText,
+    truncated,
+    originalLength,
+    wordCount: ctx.parsed.wordCount,
+    blocked,
+    answerStructure,
+  };
 }
 
 /**
  * Analyze already-fetched HTML plus pre-resolved auxiliary inputs. Pure and
  * deterministic — used directly by tests with fixtures (no network).
  */
-export function analyzeContext(ctx: AnalysisContext): AeoReport {
+export function analyzeContext(
+  ctx: AnalysisContext,
+  opts: { includeExtractedContent?: boolean } = {},
+): AeoReport {
   const dimensions: Record<DimensionId, DimensionResult> = {
     aiCrawlerAccess: scoreAiCrawlerAccess(ctx),
     contentExtractability: scoreContentExtractability(ctx),
@@ -74,7 +133,7 @@ export function analyzeContext(ctx: AnalysisContext): AeoReport {
   const answerReadinessBeta = scoreAnswerReadiness(ctx);
   const fixes = buildFixes(dimensions);
 
-  return {
+  const report: AeoReport = {
     url: ctx.url,
     finalUrl: ctx.finalUrl,
     fetchedAt: new Date().toISOString(),
@@ -86,6 +145,17 @@ export function analyzeContext(ctx: AnalysisContext): AeoReport {
     answerReadinessBeta,
     notes,
   };
+
+  if (opts.includeExtractedContent) {
+    // Surface-only: reuse the already-computed answer-readiness signals so the
+    // MCP substrate never diverges from the scored beta detector.
+    report.extractedContent = buildExtractedContent(
+      ctx,
+      answerReadinessBeta.signals,
+    );
+  }
+
+  return report;
 }
 
 /** Fetch a URL (raw HTML + robots.txt + llms.txt) and produce a full report. */
@@ -142,5 +212,7 @@ export async function analyzeUrl(
     llmsTxt,
   };
 
-  return analyzeContext(ctx);
+  return analyzeContext(ctx, {
+    includeExtractedContent: opts.includeExtractedContent,
+  });
 }
