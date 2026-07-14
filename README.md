@@ -41,6 +41,27 @@ const report = await analyzeUrl("https://example.com/");
 console.log(report.total, report.grade);
 ```
 
+## MCP server (use it in Claude, Cursor, or Codex)
+
+The engine is also packaged as an **MCP (Model Context Protocol) server**, now
+published on npm as
+[`@rendyandriyanto/aeo-checker-mcp`](https://www.npmjs.com/package/@rendyandriyanto/aeo-checker-mcp)
+[![npm version](https://img.shields.io/npm/v/@rendyandriyanto/aeo-checker-mcp.svg)](https://www.npmjs.com/package/@rendyandriyanto/aeo-checker-mcp).
+It exposes the deterministic scan to any MCP client (Claude Desktop, OpenAI
+Codex, Cursor, or any other host) as `aeo_scan_url` and `aeo_scan_site` tools,
+so an AI can pull the raw extracted page content and structural answer signals
+and judge answer-ability itself.
+
+Run it with a single command, no clone or local build required:
+
+```bash
+npx -y @rendyandriyanto/aeo-checker-mcp
+```
+
+Requires Node.js **>= 22**. For the full cross-host wiring (Claude Desktop,
+Codex, and Cursor config snippets, available tools, and design rationale), see
+[`mcp/README.md`](mcp/README.md).
+
 ## CLI test harness
 
 ```bash
