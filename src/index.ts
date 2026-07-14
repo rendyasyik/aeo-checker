@@ -37,7 +37,20 @@ export { detectBlock } from "./block-detect.js";
 export { parseRobots, isAllowed } from "./robots.js";
 export { extractSchema } from "./schema-extract.js";
 export { checkWellFormed } from "./llms-fetch.js";
-export { validateUrlForFetch, type SsrfCheck } from "./ssrf.js";
+export {
+  validateUrlForFetch,
+  validateUrlForFetchAsync,
+  validateResolvedIp,
+  type SsrfCheck,
+  type DnsResolver,
+  type ResolvedAddress,
+} from "./ssrf.js";
+export {
+  makeGuardedFetchCore,
+  synthResponse,
+  type GuardedFetchCoreConfig,
+  type BodyReader,
+} from "./guarded-fetch.js";
 
 // Site-scan mode (Fase 3, Step 1): discovery + section-aware sampling +
 // orchestrator. Site-level score aggregation is intentionally deferred.
