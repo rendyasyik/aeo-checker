@@ -1,4 +1,4 @@
-# @aeo-checker/mcp
+# @rendyandriyanto/aeo-checker-mcp
 
 MCP (Model Context Protocol) server that exposes the deterministic
 **aeo-checker** engine to an AI coding host (Claude Desktop, OpenAI Codex,
@@ -17,8 +17,9 @@ answer-ability — does this page actually answer the user's question well? — 
 the host LLM's job.** That division of labour is the whole point of this MCP
 surface versus the deterministic public web tool.
 
-> Status: not yet published to npm and the source repo is not yet public
-> (planned for Fase 5). For now, run it from a local build as shown below.
+Published on npm as
+[`@rendyandriyanto/aeo-checker-mcp`](https://www.npmjs.com/package/@rendyandriyanto/aeo-checker-mcp).
+The fastest way to run it is `npx`, no clone or local build required.
 
 ---
 
@@ -26,44 +27,27 @@ surface versus the deterministic public web tool.
 
 - Node.js **>= 22** (uses the built-in global `fetch`).
 
-## Build
+## Quick start (npx, no install)
 
-The MCP server imports the core engine from the parent repo's compiled output,
-so build the core lib first, then the MCP server:
-
-```bash
-# from the repo root
-npm install            # core lib deps
-npm run build          # builds core -> dist/
-
-cd mcp
-npm install            # MCP server deps
-npm run build          # builds MCP -> mcp/dist/
-```
-
-After a successful build the runnable entry point is:
-
-```
-<repo>/mcp/dist/index.js
-```
-
-## Run (standalone smoke check)
+Run the server straight from npm. This is the recommended path and works
+identically across hosts and machines:
 
 ```bash
-node <repo>/mcp/dist/index.js
+npx -y @rendyandriyanto/aeo-checker-mcp
 # stderr: "aeo-checker MCP server running on stdio"
 ```
 
 The server speaks JSON-RPC over **stdio**; it is meant to be launched by an MCP
-host, not used interactively.
+host, not used interactively. `npx -y` downloads the package on first run and
+caches it, so subsequent launches are fast.
 
 ---
 
-## Register with a host
+## Register with a host (npx)
 
-In every snippet below, replace `/ABS/PATH/TO/aeo-checker` with the absolute
-path to this repository on your machine. The command is always `node` and the
-argument is the built entry point.
+Every host uses the same command (`npx`) and args
+(`["-y", "@rendyandriyanto/aeo-checker-mcp"]`). No absolute paths, no local
+build.
 
 ### Claude Desktop
 
@@ -76,8 +60,8 @@ Edit `claude_desktop_config.json`:
 {
   "mcpServers": {
     "aeo-checker": {
-      "command": "node",
-      "args": ["/ABS/PATH/TO/aeo-checker/mcp/dist/index.js"]
+      "command": "npx",
+      "args": ["-y", "@rendyandriyanto/aeo-checker-mcp"]
     }
   }
 }
@@ -93,8 +77,8 @@ is silently ignored). Add:
 
 ```toml
 [mcp_servers.aeo-checker]
-command = "node"
-args = ["/ABS/PATH/TO/aeo-checker/mcp/dist/index.js"]
+command = "npx"
+args = ["-y", "@rendyandriyanto/aeo-checker-mcp"]
 
 # Optional: allow scanning private/internal hosts (off by default; see SSRF).
 [mcp_servers.aeo-checker.env]
@@ -104,9 +88,9 @@ AEO_ALLOW_PRIVATE_HOSTS = "1"
 Or add it with the Codex CLI helper (equivalent to the TOML above):
 
 ```bash
-codex mcp add aeo-checker -- node /ABS/PATH/TO/aeo-checker/mcp/dist/index.js
+codex mcp add aeo-checker -- npx -y @rendyandriyanto/aeo-checker-mcp
 # with an env var:
-codex mcp add aeo-checker --env AEO_ALLOW_PRIVATE_HOSTS=1 -- node /ABS/PATH/TO/aeo-checker/mcp/dist/index.js
+codex mcp add aeo-checker --env AEO_ALLOW_PRIVATE_HOSTS=1 -- npx -y @rendyandriyanto/aeo-checker-mcp
 ```
 
 `codex mcp list` shows registered servers. The ChatGPT desktop app, Codex CLI,
@@ -127,14 +111,47 @@ Global config at `~/.cursor/mcp.json`, or per-project at
 {
   "mcpServers": {
     "aeo-checker": {
-      "command": "node",
-      "args": ["/ABS/PATH/TO/aeo-checker/mcp/dist/index.js"]
+      "command": "npx",
+      "args": ["-y", "@rendyandriyanto/aeo-checker-mcp"]
     }
   }
 }
 ```
 
 Reload Cursor; enable the server in Settings -> MCP if prompted.
+
+---
+
+## Alternative: run from a local build
+
+If you have cloned the repo and prefer to run from source (for development or
+offline use), build the core lib first, then the MCP server. The MCP entry is
+bundled with esbuild into a single self-contained `dist/index.js`, so the build
+inlines the core engine and its dependencies.
+
+```bash
+# from the repo root
+npm install            # core lib deps
+npm run build          # builds core -> dist/
+
+cd mcp
+npm install            # MCP server deps
+npm run build          # bundles MCP -> mcp/dist/index.js
+```
+
+The runnable entry point is then `<repo>/mcp/dist/index.js`, and any host config
+above works by swapping `command`/`args` for:
+
+```json
+{ "command": "node", "args": ["/ABS/PATH/TO/aeo-checker/mcp/dist/index.js"] }
+```
+
+Standalone smoke check:
+
+```bash
+node <repo>/mcp/dist/index.js
+# stderr: "aeo-checker MCP server running on stdio"
+```
 
 ---
 
@@ -248,5 +265,5 @@ NOTE: Site scan reports STRUCTURAL AGGREGATES only...
   SSRF check and a per-fetch timeout + redirect cap.
 - **Site scan is capped** at 15 pages (deterministic, section-aware sampling)
   and reports structural aggregates only.
-- **Not on npm yet; repo not public yet** (Fase 5). Run from a local build; a
-  published package + `npx` entry point will follow at launch.
+- **Published on npm** as `@rendyandriyanto/aeo-checker-mcp`. Run it with `npx`
+  (recommended) or from a local build; both paths are shown above.

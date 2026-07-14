@@ -1,21 +1,50 @@
 {
-  "name": "@aeo-checker/mcp",
+  "name": "@rendyandriyanto/aeo-checker-mcp",
   "version": "0.1.0",
-  "description": "MCP server exposing the deterministic aeo-checker engine (single-page + site scan) as developer tools. The host LLM judges answer-ability on top of the extracted content.",
+  "description": "MCP server that scans a URL or a whole site for AEO / AI-readiness and hands the extracted content plus structural answer signals to the host LLM to judge answer-ability.",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "aeo",
+    "ai-readiness",
+    "seo",
+    "llm",
+    "claude",
+    "answer-engine-optimization"
+  ],
   "type": "module",
-  "private": true,
+  "license": "MIT",
+  "author": "Rendy Andriyanto",
+  "homepage": "https://www.rendyandriyanto.com/tools/ai-readiness-checker",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rendyasyik/aeo-checker.git",
+    "directory": "mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/rendyasyik/aeo-checker/issues"
+  },
   "engines": {
     "node": ">=22"
   },
   "bin": {
-    "aeo-checker-mcp": "./dist/index.js"
+    "aeo-checker-mcp": "dist/index.js"
   },
   "main": "./dist/index.js",
+  "files": [
+    "dist/index.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "node build.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "prepublishOnly": "node build.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
@@ -23,6 +52,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "esbuild": "^0.28.1",
     "typescript": "^5.7.2",
     "vitest": "^3.2.7"
   }
