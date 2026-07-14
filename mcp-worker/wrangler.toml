@@ -1,0 +1,76 @@
+# =============================================================================
+# aeo-checker REMOTE MCP Worker — SEPARATE deploy unit from worker/ (REST /scan).
+#
+# SAFE BY DEFAULT: the top-level config targets STAGING on a workers.dev
+# subdomain (name = aeo-mcp-staging). It deliberately sets NO custom_domain, so a
+# plain `wrangler deploy --config mcp-worker/wrangler.toml` CANNOT accidentally
+# take over the production hostname mcp.rendyandriyanto.com. Production is a
+# separate, explicit `[env.production]` block (commented notes below) that a
+# human must opt into with `--env production` AFTER the staging handshake is
+# verified.
+# =============================================================================
+
+name = "aeo-mcp-staging"
+main = "src/index.ts"
+compatibility_date = "2025-05-01"
+compatibility_flags = ["nodejs_compat"]
+
+# workers.dev subdomain is the staging surface. Keep it enabled for staging so
+# the connector can be tested at https://aeo-mcp-staging.<subdomain>.workers.dev
+workers_dev = true
+
+# --- Durable Object: McpAgent session state / Streamable-HTTP stream store. ---
+# McpAgent (Cloudflare `agents` package) is backed by a Durable Object; the
+# binding NAME must match the env field (MCP_OBJECT) and the class_name must
+# match the exported class (AeoMcpAgent). DO is included in Workers Paid at
+# minimal cost — this is the deliberate deviation from the design's "no DO" note
+# (see README "Deviations"): McpAgent is the path that actually runs Streamable
+# HTTP MCP on Workers.
+[[durable_objects.bindings]]
+name = "MCP_OBJECT"
+class_name = "AeoMcpAgent"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["AeoMcpAgent"]
+
+# --- KV: OAuth provider grant/token/client store. ---
+# The @cloudflare/workers-oauth-provider library REQUIRES a binding named
+# OAUTH_KV. Create it first and paste the id here:
+#   wrangler kv namespace create OAUTH_KV
+# Replace the placeholder id below with the returned namespace id.
+[[kv_namespaces]]
+binding = "OAUTH_KV"
+id = "PLACEHOLDER_REPLACE_WITH_OAUTH_KV_ID"
+
+# Non-secret vars. Leave ALLOWED_ORIGINS empty in production; the claude.ai host
+# origins are hardcoded in src/cors.ts. Add a staging preview origin here only if
+# needed for browser testing.
+[vars]
+ALLOWED_ORIGINS = ""
+
+# =============================================================================
+# PRODUCTION (opt-in only; do NOT deploy without a verified staging handshake).
+# Uncomment + fill in, then deploy with:  wrangler deploy --env production
+# It binds the production custom domain and its OWN OAuth KV namespace.
+# =============================================================================
+# [env.production]
+# name = "aeo-mcp"
+# workers_dev = false
+#
+# [[env.production.routes]]
+# pattern = "mcp.rendyandriyanto.com"
+# custom_domain = true
+#
+# [[env.production.durable_objects.bindings]]
+# name = "MCP_OBJECT"
+# class_name = "AeoMcpAgent"
+#
+# # Migrations are shared across envs by tag; the same v1 migration applies.
+#
+# [[env.production.kv_namespaces]]
+# binding = "OAUTH_KV"
+# id = "PLACEHOLDER_REPLACE_WITH_PROD_OAUTH_KV_ID"
+#
+# [env.production.vars]
+# ALLOWED_ORIGINS = ""
