@@ -1,27 +1,35 @@
 /**
- * Node SSRF-guarded fetch for the MCP server.
+ * Node SSRF-guarded fetch for the MCP server — a THIN adapter over the shared
+ * core (`src/guarded-fetch.ts`, compiled to `../../dist/guarded-fetch.js`).
  *
- * This is the Node twin of the Cloudflare Worker's `makeGuardedFetch`
- * (worker/src/guarded-fetch.ts). It reuses the SAME core-lib SSRF source of
- * truth (`validateUrlForFetch` from ../../dist/ssrf.js) so there is zero
- * behavioural drift between the web tool and the developer MCP surface.
+ * The SSRF guard, per-hop redirect re-validation and depth cap all live in the
+ * shared core, so the stdio MCP and the Cloudflare Worker cannot drift. This
+ * file keeps only the MCP-specific policy:
  *
- * SECURE BY DEFAULT (Larry's decision): the guard is ACTIVE by default and
- * blocks private / loopback / link-local / cloud-metadata hosts, both for the
- * entry URL and on every redirect hop. A developer who knowingly wants to scan
- * an internal host (e.g. a localhost dev server) must OPT IN explicitly via the
- * `AEO_ALLOW_PRIVATE_HOSTS=1` env var or the per-call `allowPrivateHosts` flag.
- * When the guard blocks a host the error message is honest and tells the caller
- * exactly which env var flips it.
+ *   - SECURE BY DEFAULT (Larry's decision): the guard is ACTIVE and blocks
+ *     private / loopback / link-local / cloud-metadata hosts on the entry URL and
+ *     every redirect hop. A developer who knowingly wants to scan an internal
+ *     host (e.g. a localhost dev server) must OPT IN via AEO_ALLOW_PRIVATE_HOSTS=1
+ *     or the per-call `allowPrivateHosts` flag. Blocked errors carry an honest
+ *     hint telling the caller which env var flips it.
+ *   - DNS-rebinding defence: because the MCP runs on the developer's own machine
+ *     with real LAN access, we inject a Node DNS resolver so a public hostname
+ *     that RESOLVES to a private IP is rejected too (the Worker cannot do this —
+ *     Workers has no DNS API). The resolver is injectable for tests.
  *
  * There is intentionally NO Turnstile / rate-limit / circuit-breaker here (those
- * live in the Worker). An MCP server is a LOCAL, single-developer process spoken
- * to over stdio, not a shared public surface, so those abuse mitigations would
- * only add friction. We keep the two that are always correct: an SSRF guard
- * (safety) and a per-fetch timeout + redirect cap (liveness).
+ * live in the Worker). An MCP server is a LOCAL, single-developer stdio process,
+ * not a shared public surface, so those abuse mitigations would only add
+ * friction. We keep the two that are always correct: the SSRF guard (safety) and
+ * a per-fetch timeout + redirect cap (liveness).
  */
 
-import { validateUrlForFetch } from "../../dist/ssrf.js";
+import { lookup } from "node:dns/promises";
+import {
+  makeGuardedFetchCore,
+  type BodyReader,
+} from "../../dist/guarded-fetch.js";
+import type { DnsResolver } from "../../dist/ssrf.js";
 
 /** Sentinel prefix so callers can detect an SSRF block and message honestly. */
 export const SSRF_BLOCK_PREFIX = "ssrf_blocked";
@@ -40,6 +48,12 @@ export interface GuardedFetchConfig {
    * Default false = secure. Set only via explicit developer opt-in.
    */
   allowPrivateHosts: boolean;
+  /**
+   * Optional DNS resolver override (tests inject a mock). When omitted, a real
+   * Node `dns.lookup(host, { all: true })` resolver is used for the
+   * DNS-rebinding check.
+   */
+  resolver?: DnsResolver;
 }
 
 export const DEFAULT_GUARD: GuardedFetchConfig = {
@@ -59,86 +73,34 @@ export function resolveAllowPrivateHosts(perCall?: boolean): boolean {
   return process.env.AEO_ALLOW_PRIVATE_HOSTS === "1";
 }
 
+/** Real Node DNS resolver: all A/AAAA records for a hostname. */
+export const nodeDnsResolver: DnsResolver = async (host: string) => {
+  const records = await lookup(host, { all: true });
+  return records.map((r) => ({
+    address: r.address,
+    family: r.family === 6 ? 6 : 4,
+  }));
+};
+
 /**
- * Build a `fetch`-compatible function bound to a guard config, using Node's
- * global `fetch` (Node 22). Redirects are handled manually so each hop is
- * re-validated by the SSRF guard before it is followed, exactly like the Worker.
+ * Build a `fetch`-compatible function bound to a guard config, delegating the
+ * SSRF + redirect logic to the shared core. Uses Node's global `fetch` and, when
+ * the guard is active, an injected DNS resolver so a public hostname that
+ * resolves to a private IP is rejected (DNS-rebinding defence).
  */
 export function makeNodeGuardedFetch(cfg: GuardedFetchConfig): typeof fetch {
-  const guarded = async (
-    input: Parameters<typeof fetch>[0],
-    init?: Parameters<typeof fetch>[1],
-  ): Promise<Response> => {
-    const startUrl =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-          ? input.toString()
-          : input.url;
-
-    // Entry-URL SSRF check (unless the developer opted out).
-    if (!cfg.allowPrivateHosts) {
-      const entry = validateUrlForFetch(startUrl);
-      if (!entry.ok) {
-        throw new Error(`${SSRF_BLOCK_PREFIX}:${entry.reason}: ${SSRF_HINT}`);
-      }
-    }
-
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), cfg.timeoutMs);
-    const baseHeaders = new Headers(init?.headers ?? {});
-
-    try {
-      let currentUrl = startUrl;
-      let hops = 0;
-      for (;;) {
-        const res = await fetch(currentUrl, {
-          method: "GET",
-          redirect: "manual",
-          signal: controller.signal,
-          headers: baseHeaders,
-        });
-
-        // Redirect? Re-validate the next hop before following it.
-        if (res.status >= 300 && res.status < 400) {
-          const loc = res.headers.get("location");
-          if (!loc) return synthResponse(await res.text(), res, currentUrl);
-          const nextUrl = new URL(loc, currentUrl).toString();
-          if (!cfg.allowPrivateHosts) {
-            const hop = validateUrlForFetch(nextUrl);
-            if (!hop.ok) {
-              throw new Error(
-                `${SSRF_BLOCK_PREFIX}_redirect:${hop.reason}: ${SSRF_HINT}`,
-              );
-            }
-          }
-          hops += 1;
-          if (hops > cfg.maxRedirects) throw new Error("too_many_redirects");
-          currentUrl = nextUrl;
-          continue;
-        }
-
-        return synthResponse(await res.text(), res, currentUrl);
-      }
-    } finally {
-      clearTimeout(timer);
-    }
-  };
-  return guarded as typeof fetch;
-}
-
-/**
- * Rebuild a Response the engine can consume, with `url` reflecting the final
- * hop (the engine reads `res.status`, `res.url`, `res.headers`, `res.text()`).
- */
-function synthResponse(body: string, res: Response, finalUrl: string): Response {
-  const headers = new Headers();
-  res.headers.forEach((v, k) => headers.set(k, v));
-  const out = new Response(body, { status: res.status, headers });
-  try {
-    Object.defineProperty(out, "url", { value: finalUrl, configurable: true });
-  } catch {
-    // If it cannot be overridden the engine falls back to the requested URL.
-  }
-  return out;
+  const readBody: BodyReader = (res) => res.text();
+  return makeGuardedFetchCore({
+    timeoutMs: cfg.timeoutMs,
+    maxRedirects: cfg.maxRedirects,
+    allowPrivateHosts: cfg.allowPrivateHosts,
+    readBody,
+    // Only wire the resolver when the guard is active; opting out disables it too.
+    resolver: cfg.allowPrivateHosts
+      ? undefined
+      : (cfg.resolver ?? nodeDnsResolver),
+    blockPrefix: SSRF_BLOCK_PREFIX,
+    redirectBlockPrefix: `${SSRF_BLOCK_PREFIX}_redirect`,
+    errorSuffix: SSRF_HINT,
+  });
 }

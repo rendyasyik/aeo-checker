@@ -4,6 +4,7 @@ import {
   makeNodeGuardedFetch,
   resolveAllowPrivateHosts,
 } from "../src/guarded-fetch.js";
+import type { DnsResolver } from "../../dist/ssrf.js";
 
 /**
  * Build an injectable fetch (`fetchImpl`) answering from an in-memory route
@@ -213,5 +214,32 @@ describe("guard factory + resolveAllowPrivateHosts (guard is the flip point)", (
       allowPrivateHosts: false,
     });
     await expect(gf("http://169.254.169.254/latest")).rejects.toThrow(/ssrf_blocked/);
+  });
+
+  it("DNS-rebinding: injected resolver blocks a public host resolving to metadata IP", async () => {
+    // The Node MCP runs on the developer's LAN, so it injects a DNS resolver and
+    // gets the full DNS-rebinding defence the Worker cannot. Mock a public
+    // hostname that resolves to the cloud-metadata address.
+    const resolver: DnsResolver = async () => [
+      { address: "169.254.169.254", family: 4 },
+    ];
+    const gf = makeNodeGuardedFetch({
+      timeoutMs: 2000,
+      maxRedirects: 5,
+      allowPrivateHosts: false,
+      resolver,
+    });
+    await expect(gf("http://totally-public.example/")).rejects.toThrow(/ssrf_blocked/);
+  });
+
+  it("DNS-rebinding: injected resolver blocks a public host resolving to RFC1918", async () => {
+    const resolver: DnsResolver = async () => [{ address: "10.1.2.3", family: 4 }];
+    const gf = makeNodeGuardedFetch({
+      timeoutMs: 2000,
+      maxRedirects: 5,
+      allowPrivateHosts: false,
+      resolver,
+    });
+    await expect(gf("http://looks-public.example/")).rejects.toThrow(/ssrf_blocked/);
   });
 });
