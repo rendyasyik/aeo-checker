@@ -41,7 +41,7 @@ new_sqlite_classes = ["AeoMcpAgent"]
 # Replace the placeholder id below with the returned namespace id.
 [[kv_namespaces]]
 binding = "OAUTH_KV"
-id = "PLACEHOLDER_REPLACE_WITH_OAUTH_KV_ID"
+id = "82ebedaede7d433ba12cb501f55ed6b6"
 
 # Non-secret vars. Leave ALLOWED_ORIGINS empty in production; the claude.ai host
 # origins are hardcoded in src/cors.ts. Add a staging preview origin here only if
