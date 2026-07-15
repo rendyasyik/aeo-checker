@@ -54,23 +54,23 @@ ALLOWED_ORIGINS = ""
 # Uncomment + fill in, then deploy with:  wrangler deploy --env production
 # It binds the production custom domain and its OWN OAuth KV namespace.
 # =============================================================================
-# [env.production]
-# name = "aeo-mcp"
-# workers_dev = false
-#
-# [[env.production.routes]]
-# pattern = "mcp.rendyandriyanto.com"
-# custom_domain = true
-#
-# [[env.production.durable_objects.bindings]]
-# name = "MCP_OBJECT"
-# class_name = "AeoMcpAgent"
-#
-# # Migrations are shared across envs by tag; the same v1 migration applies.
-#
-# [[env.production.kv_namespaces]]
-# binding = "OAUTH_KV"
-# id = "PLACEHOLDER_REPLACE_WITH_PROD_OAUTH_KV_ID"
-#
-# [env.production.vars]
-# ALLOWED_ORIGINS = ""
+[env.production]
+name = "aeo-mcp"
+workers_dev = false
+
+[[env.production.routes]]
+pattern = "mcp.rendyandriyanto.com"
+custom_domain = true
+
+[[env.production.durable_objects.bindings]]
+name = "MCP_OBJECT"
+class_name = "AeoMcpAgent"
+
+# Migrations are shared across envs by tag; the same v1 migration applies.
+
+[[env.production.kv_namespaces]]
+binding = "OAUTH_KV"
+id = "c6948c357ff9405f91e0910f15c79f97"
+
+[env.production.vars]
+ALLOWED_ORIGINS = ""
