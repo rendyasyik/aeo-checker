@@ -56,6 +56,18 @@ export {
 // orchestrator. Site-level score aggregation is intentionally deferred.
 export * from "./site-scan/index.js";
 
+// Shared, runtime-agnostic MCP tool logic (used by both the stdio-npm MCP
+// server and the remote MCP Worker; injects a runtime-specific guarded fetch).
+export {
+  scanUrl as mcpScanUrl,
+  scanSite as mcpScanSite,
+  type ToolResult as McpToolResult,
+  type ToolRuntime as McpToolRuntime,
+  type SsrfMessaging as McpSsrfMessaging,
+  type ScanUrlArgs as McpScanUrlArgs,
+  type ScanSiteArgs as McpScanSiteArgs,
+} from "./mcp-tools.js";
+
 export interface AnalyzeOptions extends FetchOptions {
   /** Skip network fetches for robots.txt / llms.txt (for offline analysis). */
   skipAuxiliaryFetches?: boolean;

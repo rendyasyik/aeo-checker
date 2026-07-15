@@ -28,17 +28,24 @@
     "scan": "tsx scripts/scan.ts",
     "worker:typecheck": "tsc -p worker/tsconfig.json",
     "worker:dev": "wrangler dev --config worker/wrangler.toml",
-    "worker:deploy": "wrangler deploy --config worker/wrangler.toml"
+    "worker:deploy": "wrangler deploy --config worker/wrangler.toml",
+    "mcp-worker:typecheck": "tsc -p mcp-worker/tsconfig.json",
+    "mcp-worker:dev": "wrangler dev --config mcp-worker/wrangler.toml",
+    "mcp-worker:deploy": "wrangler deploy --config mcp-worker/wrangler.toml"
   },
   "dependencies": {
     "node-html-parser": "^6.1.13"
   },
   "devDependencies": {
+    "@cloudflare/workers-oauth-provider": "^0.8.1",
     "@cloudflare/workers-types": "^5.20260712.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@types/node": "^22.10.0",
+    "agents": "^0.17.4",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^3.2.7",
-    "wrangler": "^4.110.0"
+    "wrangler": "^4.110.0",
+    "zod": "^4.4.3"
   }
 }
